@@ -51,15 +51,9 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	// TODO: implement the upload here
 
-	// err = r.ParseMultipartForm(maxMemory)
-	// if err != nil {
-	// 	respondWithError(w, http.StatusInternalServerError, "Some parse error", err)
-	// 	return
-	// }
-
 	videoFile, multipartHeader, err := r.FormFile("video")
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Some parse error", err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to parse multipart request", err)
 		return
 	}
 	defer videoFile.Close()
@@ -68,43 +62,45 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	mType, _, err := mime.ParseMediaType(mediaType)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Bad mime type", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid MIME type", err)
 		return
 	}
+
 	if mType != "video/mp4" {
 		respondWithError(w, http.StatusBadRequest, "File type not allowed", err)
 		return
 	}
 
 	tempFilename := "tubely-upload.mp4"
-	tempFile, err := os.CreateTemp("", tempFilename)
+	localUploadFile, err := os.CreateTemp("", tempFilename)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to create file", err)
 		return
 	}
 
-	_, err = io.Copy(tempFile, videoFile)
+	_, err = io.Copy(localUploadFile, videoFile)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "File copy failed", err)
 		return
 	}
-	tempFile.Seek(0, io.SeekStart)
+	localUploadFile.Seek(0, io.SeekStart)
 
-	aspectRatio, err := getVideoAspectRatio(tempFile.Name())
+	aspectRatio, err := getVideoAspectRatio(localUploadFile.Name())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch aspect ratio", err)
 		return
 	}
 
-	procesedVideoPath, err := processVideoForFastStart(tempFile.Name())
+	procesedVideoPath, err := processVideoForFastStart(localUploadFile.Name())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't process video for fast start", err)
 		return
+
 	}
 
 	processedVideo, err := os.Open(procesedVideoPath)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't oven video for upload", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't open video for upload", err)
 		return
 	}
 
@@ -121,6 +117,9 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		fileName = fmt.Sprintf("other/%s.mp4", hex.EncodeToString(key))
 	}
 
+	localUploadFile.Close()
+	os.Remove(localUploadFile.Name())
+
 	putObjectInput := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &fileName,
@@ -128,12 +127,9 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		ContentType: &mType,
 	}
 
-	tempFile.Close()
-	os.Remove(tempFile.Name())
-
 	_, err = cfg.s3Client.PutObject(context.TODO(), &putObjectInput)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Bad file type", err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to upload video to fileserver", err)
 		return
 	}
 
@@ -144,6 +140,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	err = cfg.db.UpdateVideo(videoDbEntry)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "User is not the video's owner", err)
+		return
 	}
 
 	respondWithJSON(w, http.StatusOK, videoDbEntry)
