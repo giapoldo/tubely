@@ -39,12 +39,12 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	videoDbEntry, err := cfg.db.GetVideo(videoID)
+	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Video metadata fetch failed", err)
 		return
 	}
-	if videoDbEntry.UserID != userID {
+	if video.UserID != userID {
 		respondWithError(w, http.StatusUnauthorized, "User is not the video's owner", err)
 		return
 	}
@@ -98,6 +98,9 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	}
 
+	localUploadFile.Close()
+	os.Remove(localUploadFile.Name())
+
 	processedVideo, err := os.Open(procesedVideoPath)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't open video for upload", err)
@@ -107,22 +110,19 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	key := make([]byte, 32)
 	rand.Read(key)
 
-	var fileName string
+	var objectKey string
 	switch aspectRatio {
 	case "16:9":
-		fileName = fmt.Sprintf("landscape/%s.mp4", hex.EncodeToString(key))
+		objectKey = fmt.Sprintf("landscape/%s.mp4", hex.EncodeToString(key))
 	case "9:16":
-		fileName = fmt.Sprintf("portrait/%s.mp4", hex.EncodeToString(key))
+		objectKey = fmt.Sprintf("portrait/%s.mp4", hex.EncodeToString(key))
 	case "other":
-		fileName = fmt.Sprintf("other/%s.mp4", hex.EncodeToString(key))
+		objectKey = fmt.Sprintf("other/%s.mp4", hex.EncodeToString(key))
 	}
-
-	localUploadFile.Close()
-	os.Remove(localUploadFile.Name())
 
 	putObjectInput := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
-		Key:         &fileName,
+		Key:         &objectKey,
 		Body:        processedVideo,
 		ContentType: &mType,
 	}
@@ -133,15 +133,20 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, fileName)
+	s := fmt.Sprintf("%s/%s", cfg.s3CfDistribution, objectKey)
+	video.VideoURL = &s
 
-	videoDbEntry.VideoURL = &s
-
-	err = cfg.db.UpdateVideo(videoDbEntry)
+	err = cfg.db.UpdateVideo(video)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "User is not the video's owner", err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to update video database", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, videoDbEntry)
+	// presignedVideo, err := cfg.dbVideoToSignedVideo(video)
+	// if err != nil {
+	// 	respondWithError(w, http.StatusInternalServerError, "Unable to presign video url", err)
+	// 	return
+	// }
+
+	respondWithJSON(w, http.StatusOK, video)
 }

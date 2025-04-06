@@ -15,6 +15,7 @@ import (
 )
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
+
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
@@ -34,7 +35,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
+	// fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
 	// TODO: implement the upload here
 
@@ -60,12 +61,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	// 	return
 	// }
 
-	videoDbEntry, err := cfg.db.GetVideo(videoID)
+	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Video metadata fetch failed", err)
 		return
 	}
-	if videoDbEntry.UserID != userID {
+	if video.UserID != userID {
 		respondWithError(w, http.StatusUnauthorized, "User is not the video's owner", err)
 		return
 	}
@@ -117,12 +118,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	s := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, thumbnail_fileName)
 
-	videoDbEntry.ThumbnailURL = &s
+	video.ThumbnailURL = &s
 
-	err = cfg.db.UpdateVideo(videoDbEntry)
+	err = cfg.db.UpdateVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "User is not the video's owner", err)
 	}
 
-	respondWithJSON(w, http.StatusOK, videoDbEntry)
+	respondWithJSON(w, http.StatusOK, video)
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 )
 
@@ -15,10 +14,8 @@ func processVideoForFastStart(filePath string) (string, error) {
 
 	err := command.Run()
 	if err != nil {
-		log.Fatal("Couldn't put moov atom at the start")
+		return "", nil
 	}
-
-	fmt.Println(processedFilePath)
 
 	return processedFilePath, nil
 }

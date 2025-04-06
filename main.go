@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -25,6 +26,7 @@ type apiConfig struct {
 	s3CfDistribution string
 	port             string
 	s3Client         *s3.Client
+	presignTimeout   time.Duration
 }
 
 // type thumbnail struct {
@@ -103,6 +105,7 @@ func main() {
 		s3CfDistribution: s3CfDistribution,
 		port:             port,
 		s3Client:         s3.NewFromConfig(s3ClientKeys),
+		presignTimeout:   time.Minute,
 	}
 
 	err = cfg.ensureAssetsDir()

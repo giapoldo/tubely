@@ -30,7 +30,7 @@ func getVideoAspectRatio(filePath string) (string, error) {
 
 	err = json.Unmarshal(buffer.Bytes(), &aspectRatioJSON)
 	if err != nil {
-		log.Fatal("Couldn't unmarshal ffprob result")
+		return "", nil
 	}
 
 	ar169 := 16.0 / 9.0
